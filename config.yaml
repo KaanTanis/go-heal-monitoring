@@ -1,0 +1,8 @@
+targets:
+  - url: https://kaantanis.com
+    name: kaantanis
+    interval: 5s
+
+  - url: https://google.com
+    name: google
+    interval: 5s
