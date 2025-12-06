@@ -92,7 +92,7 @@ func main() {
 	sigChan := make(chan os.Signal, 1)
 	signal.Notify(sigChan, syscall.SIGINT, syscall.SIGTERM)
 
-	// cancalable context
+	// cancelable context
 	ctx, cancel := context.WithCancel(context.Background())
 	var wg sync.WaitGroup
 
