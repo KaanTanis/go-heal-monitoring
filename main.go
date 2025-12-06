@@ -23,6 +23,16 @@ type Config struct {
 	Targets []TargetConfig `yaml:"targets"`
 }
 
+type LogEntry struct {
+	TimeStamp string `json:"timestamp"`
+	Level string `json:"level"`
+	TargetName string `json:"target_name"`
+	URL string `json:"url"`
+	StatusCode int `json:"status_code"`
+	DurationMs int64 `json:"duration_ms"`
+	Error string `json:"error,omitempty"`
+}
+
 func loadConfig(path string) (*Config, error) {
 	data, err := os.ReadFile(path)
 	if err != nil {
@@ -37,6 +47,20 @@ func loadConfig(path string) (*Config, error) {
 	return &cfg, nil
 }
 
+funct writeLog(file *os.File, mu *sync.Mutex, entry LogEntry) {
+	data, err := json.Marsal(entry)
+	if err != nil {
+		fmt.Println("Log error: %s", err)
+		return
+	}
+
+	mu.Lock()
+	defer mu.Unlock()
+
+	file.Write(data)
+	file.WriteString("\n")
+}
+
 func processRequest(target TargetConfig) {
 	start := time.Now()
 	client := http.Client{
@@ -44,7 +68,20 @@ func processRequest(target TargetConfig) {
 	}
 
 	resp, err := client.Get(target.URL)
+
+	entry := LogEntry{
+		TimeStamp: time.Now().Format(time.RFC3339),
+		targetName: target.name,
+		URL: target.url,
+	}
+
 	if err != nil {
+		entry.Level = "ERROR"
+		entry.Error = err.Error()
+		entry.DurationMs = time.Since(start).Milliseconds()
+
+		writeLog(file, mu, entry)
+
 		fmt.Printf("[ERR] Target: %s - Error: %s\n", target.Name, err)
 		return
 	}
