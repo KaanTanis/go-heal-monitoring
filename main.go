@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"net/http"
 	"os"
@@ -47,8 +48,8 @@ func loadConfig(path string) (*Config, error) {
 	return &cfg, nil
 }
 
-funct writeLog(file *os.File, mu *sync.Mutex, entry LogEntry) {
-	data, err := json.Marsal(entry)
+func writeLog(file *os.File, mu *sync.Mutex, entry LogEntry) {
+	data, err := json.Marshal(entry)
 	if err != nil {
 		fmt.Println("Log error: %s", err)
 		return
@@ -61,7 +62,7 @@ funct writeLog(file *os.File, mu *sync.Mutex, entry LogEntry) {
 	file.WriteString("\n")
 }
 
-func processRequest(target TargetConfig) {
+func processRequest(target TargetConfig, file *os.File, mu *sync.Mutex) {
 	start := time.Now()
 	client := http.Client{
 		Timeout: 10 * time.Second,
@@ -71,8 +72,8 @@ func processRequest(target TargetConfig) {
 
 	entry := LogEntry{
 		TimeStamp: time.Now().Format(time.RFC3339),
-		targetName: target.name,
-		URL: target.url,
+		TargetName: target.Name,
+		URL: target.URL,
 	}
 
 	if err != nil {
@@ -96,7 +97,7 @@ func processRequest(target TargetConfig) {
 	fmt.Printf("[LOG] Target: %s - Status: %s (%d) - Time: %v\n", target.Name, status, resp.StatusCode, time.Since(start))
 }
 
-func checkUrl(ctx context.Context, wg *sync.WaitGroup, target TargetConfig) {
+func checkUrl(ctx context.Context, wg *sync.WaitGroup, target TargetConfig, file *os.File, mu *sync.Mutex) {
 	defer wg.Done()
 
 	fmt.Printf("Started monitoring: %s\n", target.Name)
@@ -105,7 +106,7 @@ func checkUrl(ctx context.Context, wg *sync.WaitGroup, target TargetConfig) {
 	defer ticker.Stop()
 
 	// first control
-	processRequest(target)
+	processRequest(target, file, mu)
 
 	for {
 		select {
@@ -113,7 +114,7 @@ func checkUrl(ctx context.Context, wg *sync.WaitGroup, target TargetConfig) {
 				fmt.Printf("Stopping monitor for: %s\n", target.Name)
 				return
 			case <-ticker.C:
-				processRequest(target)
+				processRequest(target, file, mu)
 		}
 	}
 }
@@ -124,6 +125,15 @@ func main() {
 		fmt.Printf("Fatal error: %v\n", err)
 		os.Exit(1)
 	}
+
+	logFile, err := os.OpenFile("monitor.log", os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644)
+	if err != nil {
+		fmt.Println("Log file can not be opened:", err)
+		os.Exit(1)
+	}
+	defer logFile.Close()
+
+	var logMutex sync.Mutex
 
 	// listen close channels
 	sigChan := make(chan os.Signal, 1)
@@ -137,13 +147,14 @@ func main() {
 
 	for _, target := range cfg.Targets {
 		wg.Add(1)
-		go checkUrl(ctx, &wg, target)
+		go checkUrl(ctx, &wg, target, logFile, &logMutex)
 	}
 
 	<-sigChan
 	fmt.Println("\nShutdown signal received. Cleaning up...")
 
 	cancel()
+	wg.Wait()
 
 	fmt.Println("All workers stopped. Bye!")
 
