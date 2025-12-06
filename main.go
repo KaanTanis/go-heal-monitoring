@@ -89,10 +89,17 @@ func processRequest(target TargetConfig, file *os.File, mu *sync.Mutex) {
 
 	defer resp.Body.Close()
 
+	entry.Level = "INFO"
+	entry.StatusCode = resp.StatusCode
+	entry.DurationMs = time.Since(start).Milliseconds()
+
 	status := "OK"
 	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
+		entry.Level = "WARN"
 		status = "WARN"
 	}
+
+	writeLog(file, mu, entry)
 
 	fmt.Printf("[LOG] Target: %s - Status: %s (%d) - Time: %v\n", target.Name, status, resp.StatusCode, time.Since(start))
 }
